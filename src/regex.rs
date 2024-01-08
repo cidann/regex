@@ -54,4 +54,11 @@ mod tests{
         assert!(dfa.match_input("0adefdddd0adefddddabc"));
         assert!(dfa.match_input("0abcbcbcef0abcbcbcef123"));
     }
+        
+    #[test]
+    fn regex_incomplete1(){
+        let dfa=DFA::construct_dfa(&"(0a(bc)*|d(ef)d*)*(abc)|(123)".to_string()).unwrap();   
+        assert!(dfa.match_input("0adefdddd0adefddddabcaaa"));
+        assert!(dfa.match_input("bbb0abcbcbcef0abcbcbcef123"));
+    }
 }

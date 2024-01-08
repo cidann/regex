@@ -56,17 +56,19 @@ impl DFA {
         })
     }
 
+    /*Before adding character class temporary measure to make regex match part of string */
     pub fn match_input(&self,input:&str)->bool{
         let mut cur_state=self.automaton.start_state.borrow().clone();
         for c in input.chars(){
-            cur_state=
-            cur_state
-            .delta(Symbol::Alphabet(c))
-            .into_iter()
-            .next()
-            .expect("dfa should only have single transitions");
+            cur_state=match cur_state.delta(Symbol::Alphabet(c)).into_iter().next() {
+                Some(next_state) => next_state,
+                None => continue,
+            };
+            if cur_state.follow_epsilon().iter().any(|final_state| matches!(final_state,State::Accept(_))) {
+                return true;
+            }
         }
-        cur_state.follow_epsilon().iter().any(|final_state| matches!(final_state,State::Accept(_)))
+        false
     }
 
     fn generate_transitions(dfa_state:StateRef,nfa_states:&Vec<State>,alphabet:&HashSet<char>,visited_dfa:&mut HashMap<BTreeSet<usize>,StateRef>)

@@ -1,20 +1,20 @@
 use std::{cell::RefCell, rc::Rc, sync::atomic::{AtomicUsize, Ordering}, collections::{HashSet, VecDeque}, fmt::Debug};
 use std::hash::Hash;
 
-#[derive(Eq, Hash, PartialEq,Clone,Debug)]
+#[derive(Eq, Hash, PartialEq,Clone,Debug,PartialOrd,Ord)]
+//#[repr(u8)] this adds u8 to distinguish enum variants. This increase size from alignment to 2*alignment
+//
 pub enum Symbol {
     Alphabet(char),
-    Epsilon
+    Epsilon,
 }
-
 
 
 pub type StateRef=Rc<RefCell<State>>;
 
 #[derive(Clone)]
 pub enum State {
-    Transition(Symbol,Option<StateRef>,usize),
-    Split(Option<StateRef>,Option<StateRef>,usize),
+    Transition(Vec<(Symbol,Option<StateRef>)>,usize),
     Accept(usize)
 }
 
@@ -29,26 +29,28 @@ impl State {
 
     pub fn get_id(&self)->usize{
         match self {
-            State::Transition(_, _, id) => *id,
-            State::Split(_, _, id) => *id,
+            State::Transition(_,  id) => *id,
             State::Accept(id) => *id,
         }
     }
 
-    pub fn new_transition(c:char,to:Option<StateRef>)->State{
-        State::Transition(Symbol::Alphabet(c),to,State::get_new_id())
+    pub fn new_transition(s:Symbol,to:Option<StateRef>)->State{
+        State::Transition(vec![(s,to)],State::get_new_id())
     }
 
     pub fn new_split(to1:Option<StateRef>,to2:Option<StateRef>)->State{
-        State::Split(to1,to2,State::get_new_id())
+        State::Transition(
+            vec![(Symbol::Epsilon,to1),(Symbol::Epsilon,to2)],
+            State::get_new_id()
+        )
     }
 
     pub fn new_accept()->State{
         State::Accept(State::get_new_id())
     }
 
-    pub fn new_transition_ref(c:char,to:Option<StateRef>)->StateRef{
-        Rc::new(RefCell::new(State::new_transition(c, to)))
+    pub fn new_transition_ref(s:Symbol,to:Option<StateRef>)->StateRef{
+        Rc::new(RefCell::new(State::new_transition(s, to)))
     }
 
     pub fn new_split_ref(to1:Option<StateRef>,to2:Option<StateRef>)->StateRef{
@@ -61,16 +63,48 @@ impl State {
 
     pub fn connect(&mut self,other:&StateRef){
         match self {
-            State::Transition(_, to,_) => {
-                *to=Some(other.clone())
-            },
-            State::Split(to1, to2,_) => {
-                *to1=Some(other.clone());
-                *to2=Some(other.clone());
+            State::Transition(adj,_) => {
+                for (_,to) in adj{
+                    *to=Some(other.clone());
+                }
             },
             State::Accept(_) => {
-                *self=State::Transition(Symbol::Epsilon, Some(other.clone()),State::get_new_id());
+                *self=State::new_transition(Symbol::Epsilon, Some(other.clone()));
             }
+        }
+    }
+
+    pub fn insert_transition(&mut self,symbol:Symbol,other:&StateRef){
+        match self {
+            State::Transition(adj,_) => {
+                adj.push((symbol,Some(other.clone())))
+            },
+            State::Accept(_) => {
+                *self=State::new_transition(symbol, Some(other.clone()));
+            }
+        }
+    }
+
+    pub fn insert_transition_ord(&mut self,symbol:Symbol,other:&StateRef){
+        match self {
+            State::Transition(adj,_) => {
+                let index=match adj.binary_search_by(|transition|transition.0.cmp(&symbol)) {
+                    Ok(i) => i,
+                    Err(i) => i,
+                };
+                adj.insert(index,(symbol,Some(other.clone())));
+                
+            },
+            State::Accept(_) => {
+                *self=State::new_transition(symbol, Some(other.clone()));
+            }
+        }
+    }
+
+    pub fn adjacent(&self)->Vec<(Symbol,Option<StateRef>)>{
+        match self {
+            State::Transition(adj, _) => adj.clone(),
+            State::Accept(_) => Vec::new(),
         }
     }
 
@@ -79,18 +113,12 @@ impl State {
             res.push(self.clone());
             visited1.insert(self.get_id());
             match self {
-                State::Transition(_, next_state, _) => {
-                    next_state.as_ref().map(
-                        |state_rf|(*state_rf).borrow().dfs(visited1, res)
-                    );
-                },
-                State::Split(next_state1, next_state2, _) =>{
-                    next_state1.as_ref().map(
-                        |state_rf|(*state_rf).borrow().dfs(visited1, res)
-                    );
-                    next_state2.as_ref().map(
-                        |state_rf|(*state_rf).borrow().dfs(visited1, res)
-                    );
+                State::Transition(adj, _) => {
+                    for (_,next_state) in adj{
+                        next_state.iter().for_each(
+                            |state_rf|(*state_rf).borrow().dfs(visited1, res)
+                        );
+                    }
                 },
                 State::Accept(_) => {},
             }
@@ -99,21 +127,17 @@ impl State {
     
     pub fn delta(&self,symbol:Symbol)->Vec<State>{
         match self {
-            State::Transition(s, r, _) => {
-                if *s==symbol{
-                    r.iter().map(|state_ref|state_ref.borrow().clone()).collect()
+            State::Transition(adj, _) => {
+                let mut next_states=Vec::new();
+                for (s,to) in adj{
+                    if *s==symbol{
+                        //Can also do this
+                        //let state:Vec<State>=to.iter().map(|state_ref|state_ref.borrow().clone()).collect();
+                        //to.and_then(|state| Some(next_states.push(state)));
+                        to.iter().for_each(|state_ref| next_states.push(state_ref.borrow().clone()));
+                    }
                 }
-                else {
-                    Vec::new()
-                }
-            },
-            State::Split(r0, r1, _) => {
-                let mut valid=Vec::new();
-                if matches!(symbol,Symbol::Epsilon){
-                    r0.iter().for_each(|valid_ref|valid.push(valid_ref.borrow().clone()));
-                    r1.iter().for_each(|valid_ref|valid.push(valid_ref.borrow().clone()));
-                }
-                valid
+                next_states
             },
             State::Accept(_) => Vec::new(),
         }
@@ -148,11 +172,22 @@ impl State {
 impl PartialEq for State {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
-            (Self::Transition(l0, l1,_), Self::Transition(r0, r1,_)) => {
-                l0 == r0 && core::mem::discriminant(l1)==core::mem::discriminant(r1)
-            },
-            (Self::Split(l0, l1,_), Self::Split(r0, r1,_)) =>{
-                core::mem::discriminant(l0)==core::mem::discriminant(r0) && core::mem::discriminant(l1)==core::mem::discriminant(r1)
+            (Self::Transition(to0,_), Self::Transition(to1,_)) => {
+                if to0.len()==to1.len(){
+                    to0
+                    .iter()
+                    .zip(to1)
+                    .all(
+                        |(transition0,transition1)| 
+                        {
+                            transition0.0==transition1.0 &&
+                            transition0.1.is_some()==transition1.1.is_some()
+                        }
+                    )
+                }
+                else {
+                    false
+                }
             },
             _ => core::mem::discriminant(self) == core::mem::discriminant(other),
         }
@@ -163,8 +198,18 @@ impl PartialEq for State {
 impl Debug for State {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Transition(arg0, arg1, _) => f.debug_tuple("Transition").field(arg0).field(&arg1.is_some()).finish(),
-            Self::Split(arg0, arg1, _) => f.debug_tuple("Split").field(&arg0.is_some()).field(&arg1.is_some()).finish(),
+            Self::Transition(adj, _) => {
+                f
+                .debug_tuple("Transition")
+                .field(
+                    &adj
+                    .iter()
+                    .map(|(sym,_)|sym.clone())
+                    .collect::<Vec<Symbol>>()
+                )
+                .field(&adj.len())
+                .finish()
+            },
             Self::Accept(_) => f.debug_tuple("Accept").finish(),
         }
     }

@@ -171,4 +171,26 @@ mod dfa{
         
         assert_eq!(dfa,expect)
     }
+
+    
+    #[test]
+    fn all_1(){
+        let re="(ab.)*c";
+        let dfa=DFA::construct_dfa(&re.to_string()).expect("Expect successful dfa construction");
+        let accept=State::new_accept_ref();
+        let to_accept=State::new_transition_ref(Symbol::Epsilon, Some(accept.clone()));
+        let all=State::new_transition_ref(Symbol::Alphabet('c'), Some(to_accept.clone()));
+        all.borrow_mut().insert_transition_ord(Symbol::Alphabet('a'), &all);
+        let b=State::new_transition_ref(Symbol::Alphabet('b'), Some(all));
+        let a=State::new_transition_ref(Symbol::Alphabet('a'), Some(b));
+        a.borrow_mut().insert_transition(Symbol::new_alphabet('c'), &to_accept);
+        let expect=DFA{
+            automaton:Automaton{
+                start_state:a,
+                end_state:accept
+            }
+        };
+        
+        assert_eq!(dfa,expect)
+    }
 }

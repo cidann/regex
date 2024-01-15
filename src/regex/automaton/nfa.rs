@@ -1,5 +1,6 @@
 use crate::regex::transform::{ThompsonOp,to_thompson_postfix};
 use super::Automaton;
+use super::Symbol;
 
 
 #[derive(Debug)]
@@ -17,12 +18,12 @@ impl NFA {
     pub fn construct_nfa(re :&String)->Result<NFA,String>{
         let thompson=to_thompson_postfix(re)?;
         let mut stack:Vec<Automaton>=Vec::new();
-        //println!("{:?}",thompson);
+        println!("Thompson construction stack: {:?}",thompson);
     
         for op in &thompson{
             match op {
                 ThompsonOp::Primary(c)=>{
-                    stack.push(Automaton::automaton_transition(c));
+                    stack.push(Automaton::automaton_transition(&Symbol::new_alphabet(*c)));
                 },
                 ThompsonOp::Asterisk => {
                     let automaton=stack.pop().unwrap();
@@ -38,7 +39,10 @@ impl NFA {
                     let automaton1=stack.pop().unwrap();
                     stack.push(Automaton::automaton_concat(&automaton1, &automaton2));
                 },
-                _=>{panic!("ThompsonOp should not have parenthese")}
+                ThompsonOp::All=>{
+                    stack.push(Automaton::automaton_transition(&Symbol::new_all_char()));
+                }
+                _=>{panic!("Unhandled thomson op")}
             }
         }
     
@@ -115,6 +119,23 @@ mod tests{
         let accept3=State::new_accept_ref();
         let a1=Automaton{start_state:State::new_transition_ref(Alphabet('a'), Some(accept1.clone())),end_state:accept1};
         let a2=Automaton{start_state:State::new_transition_ref(Alphabet('b'), Some(accept2.clone())),end_state:accept2};
+        let a3=Automaton{start_state:State::new_transition_ref(Alphabet('c'), Some(accept3.clone())),end_state:accept3};
+        let ab=Automaton::concat_automaton(&a1, &a2);
+        let ab=Automaton::automaton_zero_or_one(&ab);
+        let expect=NFA{automaton:Automaton::automaton_alternate(&ab, &a3)};
+        let result=NFA::construct_nfa(&re.to_string()).unwrap();
+        
+        assert_eq!(result,expect)
+    }
+
+    #[test]
+    fn build_char_class_1() {
+        let re="(a.)*|c";
+        let accept1=State::new_accept_ref();
+        let accept2=State::new_accept_ref();
+        let accept3=State::new_accept_ref();
+        let a1=Automaton{start_state:State::new_transition_ref(Alphabet('a'), Some(accept1.clone())),end_state:accept1};
+        let a2=Automaton{start_state:State::new_transition_ref(Symbol::new_all_char(), Some(accept2.clone())),end_state:accept2};
         let a3=Automaton{start_state:State::new_transition_ref(Alphabet('c'), Some(accept3.clone())),end_state:accept3};
         let ab=Automaton::concat_automaton(&a1, &a2);
         let ab=Automaton::automaton_zero_or_one(&ab);

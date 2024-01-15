@@ -29,9 +29,9 @@ impl Automaton {
         }
     }
 
-    fn automaton_transition(c:&char)->Automaton{
+    fn automaton_transition(symbol:&Symbol)->Automaton{
         let end=State::new_accept_ref();
-        let transition=State::new_transition_ref(Symbol::Alphabet(*c),Some(end.clone()));
+        let transition=State::new_transition_ref(symbol.clone(),Some(end.clone()));
         Automaton{
             start_state:transition.clone(),
             end_state:end
@@ -73,6 +73,7 @@ impl Automaton {
         .map(|(symbol,_)|symbol)
         .filter_map(|symbol| match symbol {
             Symbol::Alphabet(c) => Some(c),
+            Symbol::CharClass(_)=>None,
             Symbol::Epsilon => None,
         })
         .collect()

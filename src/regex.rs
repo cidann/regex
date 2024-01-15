@@ -60,5 +60,12 @@ mod tests{
         let dfa=DFA::construct_dfa(&"(0a(bc)*|d(ef)d*)*(abc)|(123)".to_string()).unwrap();   
         assert!(dfa.match_input("0adefdddd0adefddddabcaaa"));
         assert!(dfa.match_input("bbb0abcbcbcef0abcbcbcef123"));
+    }        
+
+    #[test]
+    fn regex_char_class_all1(){
+        let dfa=DFA::construct_dfa(&"(.*) and (.*)".to_string()).unwrap();   
+        assert!(dfa.match_input("(abc) and (123)"));
+        assert!(dfa.match_input("(...) and (...)"));
     }
 }

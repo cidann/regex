@@ -1,13 +1,8 @@
 use std::{cell::RefCell, rc::Rc, sync::atomic::{AtomicUsize, Ordering}, collections::{HashSet, VecDeque}, fmt::Debug};
-use std::hash::Hash;
 
-#[derive(Eq, Hash, PartialEq,Clone,Debug,PartialOrd,Ord)]
-//#[repr(u8)] this adds u8 to distinguish enum variants. This increase size from alignment to 2*alignment
-//
-pub enum Symbol {
-    Alphabet(char),
-    Epsilon,
-}
+pub use symbols::Symbol;
+
+mod symbols;
 
 
 pub type StateRef=Rc<RefCell<State>>;
@@ -130,7 +125,7 @@ impl State {
             State::Transition(adj, _) => {
                 let mut next_states=Vec::new();
                 for (s,to) in adj{
-                    if *s==symbol{
+                    if s.contains(&symbol){
                         //Can also do this
                         //let state:Vec<State>=to.iter().map(|state_ref|state_ref.borrow().clone()).collect();
                         //to.and_then(|state| Some(next_states.push(state)));

@@ -6,10 +6,19 @@ pub enum ThompsonOp  {
     Asterisk,
     Or,
     Concat,
+    All,
     Primary(char)
 }
 
+/*
+postfix grammer:
 
+REGEX -> OR+
+OR -> ASTERISK ('|' OR)?
+ASTERISK -> PRIMARY '*'?
+PRIMARY -> '('REGEX')' | CHAR_CLASS 
+CHAR_CLASS -> ('\' char) | '.' | char
+*/
 
 fn to_thompson_op(c:&char)->ThompsonOp{
     match c {
@@ -17,6 +26,7 @@ fn to_thompson_op(c:&char)->ThompsonOp{
         ')'=> ThompsonOp::RightParen,
         '*'=> ThompsonOp::Asterisk,
         '|'=> ThompsonOp::Or,
+        '.'=>ThompsonOp::All,
         _=> ThompsonOp::Primary(*c)
     }
 }
@@ -30,14 +40,14 @@ fn to_postfix_concat(s:&str)->Result<(Vec<ThompsonOp>,&str),&str>{
     
     while let Some(next_char)=remain.chars().next(){
         match to_thompson_op(&next_char) {
-            ThompsonOp::Primary(_)|ThompsonOp::LeftParen=>{
+            ThompsonOp::RightParen=>{
+                break;
+            },
+            _=>{
                 let (right_concat,right_remain)=to_postfix_or(remain)?;
                 stack.extend(right_concat);
                 stack.push(ThompsonOp::Concat);
                 remain=right_remain;
-            },
-            _=>{
-                break;
             }
         }
     }
@@ -83,22 +93,47 @@ fn to_postfix_primary(s:&str)->Result<(Vec<ThompsonOp>,&str),&str>{
                 (stack,remain)=to_postfix_concat(&remain[1..])?;
                 remain=&remain[1..];
             }
-            ThompsonOp::Primary(_)=>{
-                stack.push(ThompsonOp::Primary(next_char));
-                remain=&remain[1..];
-            }
             _=>{
-                panic!("Unexpected operation at primary parse");
+                (stack,remain)=to_postfix_char_class(s)?;
             }
         }  
-    }
-    else{
-        return Err("Expected primary");
     }
     
     Ok((stack,remain))
 }
 
+/*
+CHAR_CLASS -> ('\' char) | '.' | char 
+*/
+fn to_postfix_char_class(s:&str)->Result<(Vec<ThompsonOp>,&str),&str>{
+    let mut stack:Vec<ThompsonOp>=vec![];
+    let mut remain=s;
+
+    if let Some(next_char)=remain.chars().next(){
+        remain=&remain[1..];
+
+        if next_char=='\\'{
+            let escaped=remain.chars().next().ok_or("escapted nothing")?;
+            remain=&remain[1..];
+            stack.push(ThompsonOp::Primary(escaped))
+        }
+        else {
+            match to_thompson_op(&next_char) {
+                ThompsonOp::All=>{
+                    stack.push(ThompsonOp::All)
+                }
+                ThompsonOp::Primary(_)=>{
+                    stack.push(ThompsonOp::Primary(next_char))
+                }
+                _=>{
+                    panic!("Unexpected operation at char_charr parse");
+                }
+            }  
+        }
+    }
+    
+    Ok((stack,remain))
+}
 
 #[cfg(test)]
 mod thompson_postfix_tests{
@@ -228,7 +263,7 @@ mod thompson_postfix_tests{
 
     #[test]
     fn paren_test_3()->Result<(),&'static str>{
-        let input="12(ab)*|c.*";
+        let input="12(ab)*|c#*";
         let result=to_thompson_postfix(input)?;
         let expect=vec![
             ThompsonOp::Primary('1'),
@@ -241,7 +276,7 @@ mod thompson_postfix_tests{
             ThompsonOp::Primary('c'),
             ThompsonOp::Or,
             ThompsonOp::Concat,
-            ThompsonOp::Primary('.'),
+            ThompsonOp::Primary('#'),
             ThompsonOp::Asterisk,
             ThompsonOp::Concat,
         ];
@@ -253,7 +288,7 @@ mod thompson_postfix_tests{
 
     #[test]
     fn paren_test_4()->Result<(),&'static str>{
-        let input="12(ab)*|(c.)*";
+        let input="12(ab)*|(c#)*";
         let result=to_thompson_postfix(input)?;
         let expect=vec![
             ThompsonOp::Primary('1'),
@@ -264,11 +299,86 @@ mod thompson_postfix_tests{
             ThompsonOp::Concat,
             ThompsonOp::Asterisk,
             ThompsonOp::Primary('c'),
-            ThompsonOp::Primary('.'),
+            ThompsonOp::Primary('#'),
             ThompsonOp::Concat,
             ThompsonOp::Asterisk,
             ThompsonOp::Or,
             ThompsonOp::Concat,
+        ];
+
+        assert_eq!(result,expect);
+
+        Ok(())
+    }
+
+    #[test]
+    fn char_class_test_1()->Result<(),&'static str>{
+        let input=".*abc";
+        let result=to_thompson_postfix(input)?;
+        let expect=vec![
+            ThompsonOp::All,
+            ThompsonOp::Asterisk,
+            ThompsonOp::Primary('a'),
+            ThompsonOp::Concat,
+            ThompsonOp::Primary('b'),
+            ThompsonOp::Concat,
+            ThompsonOp::Primary('c'),
+            ThompsonOp::Concat,
+        ];
+
+        assert_eq!(result,expect);
+
+        Ok(())
+    }
+    #[test]
+    fn char_class_test_2()->Result<(),&'static str>{
+        let input="\\.*abc";
+        let result=to_thompson_postfix(input)?;
+        let expect=vec![
+            ThompsonOp::Primary('.'),
+            ThompsonOp::Asterisk,
+            ThompsonOp::Primary('a'),
+            ThompsonOp::Concat,
+            ThompsonOp::Primary('b'),
+            ThompsonOp::Concat,
+            ThompsonOp::Primary('c'),
+            ThompsonOp::Concat,
+        ];
+
+        assert_eq!(result,expect);
+
+        Ok(())
+    }
+    #[test]
+    fn char_class_test_3()->Result<(),&'static str>{
+        let input="\\\\*abc";
+        let result=to_thompson_postfix(input)?;
+        let expect=vec![
+            ThompsonOp::Primary('\\'),
+            ThompsonOp::Asterisk,
+            ThompsonOp::Primary('a'),
+            ThompsonOp::Concat,
+            ThompsonOp::Primary('b'),
+            ThompsonOp::Concat,
+            ThompsonOp::Primary('c'),
+            ThompsonOp::Concat,
+        ];
+
+        assert_eq!(result,expect);
+
+        Ok(())
+    }
+    #[test]
+    fn char_class_test_4()->Result<(),&'static str>{
+        let input="(a.)*|b";
+        let result=to_thompson_postfix(input)?;
+        let expect=vec![
+            ThompsonOp::Primary('a'),
+            ThompsonOp::All,
+            ThompsonOp::Concat,
+            ThompsonOp::Asterisk,
+            ThompsonOp::Primary('b'),
+            ThompsonOp::Or,
         ];
 
         assert_eq!(result,expect);
